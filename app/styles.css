@@ -266,6 +266,11 @@ input[type="range"] {
   cursor: default;
 }
 
+.export-btn.cancel:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
 .export-bar {
   flex: 1;
   min-width: 120px;

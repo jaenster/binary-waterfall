@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WaterfallCore, COLOR_FORMAT_ERRORS } from "./wasm";
 import { Player } from "./player";
-import { exportWebCodecs, exportRealtime, webCodecsSupported } from "./export";
+import {
+  exportWebCodecs,
+  exportRealtime,
+  webCodecsSupported,
+  ExportCancelled,
+  type ExportPhase,
+} from "./export";
 
 const EXPORT_FPS = 30;
+
+const PHASE_LABEL: Record<ExportPhase, string> = {
+  audio: "Preparing audio",
+  encoding: "Encoding",
+  finalizing: "Finalizing",
+};
 
 const ALIGNMENTS = [
   { label: "Start", value: 0 },
@@ -65,6 +77,8 @@ export function App() {
   // Export
   const [recording, setRecording] = useState(false);
   const [exportPct, setExportPct] = useState(0);
+  const [exportPhase, setExportPhase] = useState<ExportPhase>("encoding");
+  const cancelRef = useRef(false);
   const [exportFast] = useState(() => webCodecsSupported());
   const [exportSupported] = useState(
     () =>
@@ -250,6 +264,8 @@ export function App() {
 
     setRecording(true);
     setExportPct(0);
+    setExportPhase("encoding");
+    cancelRef.current = false;
     player.pause();
     setPlaying(false);
 
@@ -266,7 +282,11 @@ export function App() {
           sampleRate,
           lengthMs: player.lengthMs,
           fps: EXPORT_FPS,
-          onProgress: setExportPct,
+          onProgress: (f, phase) => {
+            setExportPct(f);
+            setExportPhase(phase);
+          },
+          shouldCancel: () => cancelRef.current,
         });
         drawFrame(player.currentMs()); // restore the live view
       } else {
@@ -293,11 +313,16 @@ export function App() {
       }
       downloadBlob(blob);
     } catch (err) {
-      console.error("Export failed", err);
+      if (!(err instanceof ExportCancelled)) console.error("Export failed", err);
     } finally {
+      cancelRef.current = false;
       setRecording(false);
     }
   }, [fileBytes, recording, exportSupported, channels, sampleRate, drawFrame, downloadBlob]);
+
+  const cancelExport = useCallback(() => {
+    cancelRef.current = true;
+  }, []);
 
   const togglePlay = useCallback(() => {
     const player = playerRef.current;
@@ -470,14 +495,21 @@ export function App() {
       </div>
 
       <div className="export">
-        <button
-          className="export-btn"
-          onClick={exportVideo}
-          disabled={!fileBytes || recording || !exportSupported}
-          title={exportSupported ? "Encode the visualization + audio to a .webm file" : "Not supported in this browser"}
-        >
-          {recording ? "● Encoding…" : "⬇ Export video (.webm)"}
-        </button>
+        {!recording && (
+          <button
+            className="export-btn"
+            onClick={exportVideo}
+            disabled={!fileBytes || !exportSupported}
+            title={exportSupported ? "Encode the visualization + audio to a .webm file" : "Not supported in this browser"}
+          >
+            ⬇ Export video (.webm)
+          </button>
+        )}
+        {recording && (
+          <button className="export-btn cancel" onClick={cancelExport}>
+            ✕ Cancel
+          </button>
+        )}
         {recording && (
           <div className="export-bar">
             <div className="export-fill" style={{ width: `${Math.round(exportPct * 100)}%` }} />
@@ -486,10 +518,10 @@ export function App() {
         <span className="export-note">
           {recording
             ? exportFast
-              ? `Encoding offline… ${Math.round(exportPct * 100)}%`
+              ? `${PHASE_LABEL[exportPhase]}… ${Math.round(exportPct * 100)}%`
               : "Recording in real time — plays through once, then downloads."
             : exportFast
-              ? "Fast offline encode (WebCodecs)."
+              ? `Fast offline encode (WebCodecs)${lengthMs ? ` — clip is ${fmtTime(lengthMs)}` : ""}.`
               : "Real-time capture (one full playthrough)."}
         </span>
       </div>
