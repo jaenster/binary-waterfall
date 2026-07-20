@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "wasm": "zig build-exe src/core.zig -target wasm32-freestanding -fno-entry -O ReleaseSmall -rdynamic -femit-bin=public/core.wasm && rm -f public/core.wasm.o",
+    "wasm": "mkdir -p public && zig build-exe src/core.zig -target wasm32-freestanding -fno-entry -O ReleaseSmall -rdynamic -femit-bin=public/core.wasm && rm -f public/core.wasm.o",
     "dev": "npm run wasm && vite",
     "build": "npm run wasm && tsc && vite build",
     "preview": "vite preview"
